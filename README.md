@@ -1,6 +1,6 @@
 ## Water Ripples
 
-Simulating water ripples
+Simulating water ripples. Reference from https://github.com/mrdoob/three.js/blob/master/examples/webgl_gpgpu_water.html
 
 ## How to run locally
 
