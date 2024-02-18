@@ -4,8 +4,8 @@
   "description": "",
   "browserslist": "> 0.5%, last 2 versions, not dead",
   "scripts": {
-    "start": "parcel src/index.html --open",
-    "build": "parcel build src/index.html --public-url ./"
+    "start": "parcel src/*.html --open",
+    "build": "parcel build src/*.html --public-url ./"
   },
   "dependencies": {
     "dat.gui": "0.x",

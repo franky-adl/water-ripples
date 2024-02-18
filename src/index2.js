@@ -30,11 +30,11 @@ const params = {
 }
 
 // Texture width for simulation
-const WIDTH = 128
-const HEIGHT = 128
+const WIDTH = 512
+const HEIGHT = 256
 // Water size in system units
-const BOUNDS_W = 512
-const BOUNDS_H = 512
+const BOUNDS_W = window.innerWidth
+const BOUNDS_H = window.innerWidth / 2
 
 const simplex = new SimplexNoise()
 
@@ -55,7 +55,14 @@ let renderer = createRenderer({ antialias: true }, (_renderer) => {
 
 // Create the camera
 // Pass in fov, near, far and camera position respectively
-let camera = createCamera(75, 1, 3000, { x: 0, y: 200, z: 350 })
+let camera = new THREE.OrthographicCamera(
+  window.innerWidth / -2, // left
+  window.innerWidth / 2,  // right
+  window.innerHeight / 2, // top
+  window.innerHeight / -2, // bottom
+  -1000, // near plane
+  1000 // far plane
+)
 
 /**************************************************
  * 2. Build your scene in this threejs app
@@ -97,9 +104,9 @@ let app = {
     sun2.position.set( - 100, 350, - 200 )
     scene.add( sun2 )
 
-    const materialColor = 0x0040C0;
+    const materialColor = 0xFF0000
 
-    const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT );
+    const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )
 
     // material: make a THREE.ShaderMaterial clone of THREE.MeshPhongMaterial, with customized vertex shader
     const material = new THREE.ShaderMaterial( {
@@ -136,7 +143,6 @@ let app = {
     this.waterUniforms = material.uniforms
 
     waterMesh = new THREE.Mesh( geometry, material )
-    waterMesh.rotation.x = - Math.PI / 2
     waterMesh.matrixAutoUpdate = false
     waterMesh.updateMatrix()
 
@@ -145,7 +151,6 @@ let app = {
     // THREE.Mesh just for mouse raycasting
     const geometryRay = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, 1, 1 )
     this.meshRay = new THREE.Mesh( geometryRay, new THREE.MeshBasicMaterial( { color: 0xFFFFFF, visible: false } ) )
-    this.meshRay.rotation.x = - Math.PI / 2
     this.meshRay.matrixAutoUpdate = false
     this.meshRay.updateMatrix()
     scene.add( this.meshRay )
@@ -251,12 +256,19 @@ let app = {
     }
   },
   setMouseCoords( x, y ) {
-    this.mouseCoords.set( ( x / renderer.domElement.clientWidth ) * 2 - 1, - ( y / renderer.domElement.clientHeight ) * 2 + 1 )
+    this.mouseCoords.set( ( x / renderer.domElement.clientWidth ) * 2 - 1, ( y / renderer.domElement.clientHeight ) * 2 - 1 )
     this.mouseMoved = true
   },
   onPointerMove( event ) {
     if ( event.isPrimary === false ) return
     this.setMouseCoords( event.clientX, event.clientY )
+  },
+  resize() {
+    camera.left = window.innerWidth / -2
+    camera.right = window.innerWidth / 2
+    camera.top = window.innerHeight / 2
+    camera.bottom = window.innerHeight / -2
+    camera.updateProjectionMatrix()
   },
   // @param {number} interval - time elapsed between 2 frames
   // @param {number} elapsed - total time elapsed since app start
@@ -274,7 +286,7 @@ let app = {
 
       if ( intersects.length > 0 ) {
         const point = intersects[ 0 ].point
-        hmUniforms[ 'mousePos' ].value.set( point.x, point.z )
+        hmUniforms[ 'mousePos' ].value.set( point.x, point.y )
       } else {
         hmUniforms[ 'mousePos' ].value.set( 10000, 10000 )
       }

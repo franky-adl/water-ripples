@@ -23,7 +23,7 @@ varying vec3 vViewPosition;
 
 void main() {
 
-    vec2 cellSize = vec2( 1.0 / WIDTH, 1.0 / WIDTH );
+    vec2 cellSize = vec2( 1.0 / (WIDTH), 1.0 / HEIGHT );
 
     #include <uv_vertex>
     #include <color_vertex>
@@ -31,8 +31,8 @@ void main() {
     // # include <beginnormal_vertex>
     // Compute normal from heightmap
     vec3 objectNormal = vec3(
-        ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * WIDTH / BOUNDS,
-        ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * WIDTH / BOUNDS,
+        ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * WIDTH / BOUNDS_W,
+        ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * HEIGHT / BOUNDS_H,
         1.0 );
     //<beginnormal_vertex>
 
