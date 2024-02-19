@@ -10,9 +10,12 @@ import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise"
 import { createCamera, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
 
 // Other deps
+import { loadTexture } from "./common-utils"
 import WaterVertex from "./shaders/waterVertex.glsl"
+import WaterFragment from "./shaders/waterFragment.glsl"
 import HeightmapFragment from "./shaders/heightmapFragment.glsl"
 import SmoothFragment from "./shaders/smoothFragment.glsl"
+import Mountains from "./assets/mountains.jpg"
 
 global.THREE = THREE
 // previously this feature is .legacyMode = false, see https://www.donmccurdy.com/2020/06/17/color-management-in-threejs/
@@ -76,6 +79,8 @@ let app = {
     // this.controls = new OrbitControls(camera, renderer.domElement)
     // this.controls.enableDamping = true
 
+    let Texture = await loadTexture(Mountains)
+
     await updateLoadingProgressBar(0.1)
 
     this.mouseMoved = false
@@ -100,11 +105,11 @@ let app = {
     sun.position.set( 300, 400, 175 )
     scene.add( sun )
 
-    const sun2 = new THREE.DirectionalLight( 0x40A040, 0.6 )
+    const sun2 = new THREE.DirectionalLight( 0xFFFFFF, 0.6 )
     sun2.position.set( - 100, 350, - 200 )
     scene.add( sun2 )
 
-    const materialColor = 0xFF0000
+    const materialColor = 0xFFFFFF
 
     const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )
 
@@ -117,22 +122,24 @@ let app = {
         }
       ] ),
       vertexShader: WaterVertex,
-      fragmentShader: THREE.ShaderChunk[ 'meshphong_frag' ]
-
+      fragmentShader: WaterFragment
     } );
 
     material.lights = true
 
     // Material attributes from THREE.MeshPhongMaterial
+    // for the color map to work, we need all 3 lines (define material.color, material.map and material.uniforms[ 'map' ].value)
     material.color = new THREE.Color( materialColor )
     material.specular = new THREE.Color( 0x111111 )
     material.shininess = 50
+    material.map = Texture
 
     // Sets the uniforms with the material values
     material.uniforms[ 'diffuse' ].value = material.color
     material.uniforms[ 'specular' ].value = material.specular
     material.uniforms[ 'shininess' ].value = Math.max( material.shininess, 1e-4 )
     material.uniforms[ 'opacity' ].value = material.opacity
+    material.uniforms[ 'map' ].value = Texture
 
     // Defines
     material.defines.WIDTH = WIDTH.toFixed( 1 )
