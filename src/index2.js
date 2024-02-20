@@ -80,6 +80,8 @@ let app = {
     // this.controls.enableDamping = true
 
     let Texture = await loadTexture(Mountains)
+    // assigning image textures with SRGBColorSpace is essential in getting the rendered colors correct
+    Texture.colorSpace = THREE.SRGBColorSpace
 
     await updateLoadingProgressBar(0.1)
 
