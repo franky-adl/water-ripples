@@ -20,6 +20,7 @@ varying vec3 vViewPosition;
 #include <shadowmap_pars_vertex>
 #include <logdepthbuf_pars_vertex>
 #include <clipping_planes_pars_vertex>
+varying float heightValue;
 
 void main() {
 
@@ -48,7 +49,7 @@ void main() {
 #endif
 
     //# include <begin_vertex>
-    float heightValue = texture2D( heightmap, uv ).x;
+    heightValue = texture2D( heightmap, uv ).x;
     vec3 transformed = vec3( position.x, position.y, heightValue );
     //<begin_vertex>
 
