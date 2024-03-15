@@ -119,10 +119,6 @@ let app = {
     sun.position.set( 300, 400, 175 )
     scene.add( sun )
 
-    const sun2 = new THREE.DirectionalLight( 0xFFFFFF, 0.6 )
-    sun2.position.set( - 100, 350, - 200 )
-    scene.add( sun2 )
-
     const materialColor = 0xFFFFFF
 
     const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )

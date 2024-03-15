@@ -166,9 +166,9 @@ let app = {
     this.gpuCompute.setVariableDependencies( this.heightmapVariable, [ this.heightmapVariable ] )
 
     this.heightmapVariable.material.uniforms[ 'mousePos' ] = { value: new THREE.Vector2( 10000, 10000 ) }
-    this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: 20.0 }
-    this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: 0.98 }
-    this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: 0.3 }
+    this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: params.mouseSize }
+    this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: params.viscosity }
+    this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: params.waveHeight }
     this.heightmapVariable.material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
     this.heightmapVariable.material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
 
