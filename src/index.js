@@ -206,7 +206,7 @@ let app = {
     await updateLoadingProgressBar(1.0, 100)
   },
   fillTexture( texture ) {
-    const waterMaxHeight = 10;
+    const waterMaxHeight = 2;
 
     function noise( x, y ) {
       let multR = waterMaxHeight;
@@ -230,7 +230,7 @@ let app = {
         const y = j * 128 / HEIGHT;
 
         pixels[ p + 0 ] = noise( x, y );
-        pixels[ p + 1 ] = pixels[ p + 0 ];
+        pixels[ p + 1 ] = 0;
         pixels[ p + 2 ] = 0;
         pixels[ p + 3 ] = 1;
 

@@ -11,12 +11,11 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { createCamera, createComposer, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
 
 // Other deps
-import { loadTexture } from "./common-utils"
-import WaterVertex from "./shaders/waterVertex.glsl"
-import WaterFragment from "./shaders/waterFragment3.glsl"
+import {hexToRgb} from "./common-utils"
+import WaterVertex from "./shaders/waterVertex5.glsl"
+import WaterFragment from "./shaders/waterFragment5.glsl"
 import HeightmapFragment from "./shaders/heightmapFragment.glsl"
 import SmoothFragment from "./shaders/smoothFragment.glsl"
-import Mountains from "./assets/mountains.jpg"
 
 global.THREE = THREE
 // previously this feature is .legacyMode = false, see https://www.donmccurdy.com/2020/06/17/color-management-in-threejs/
@@ -28,21 +27,29 @@ THREE.ColorManagement.enabled = true
  *************************************************/
 const params = {
   // general scene params
-  mouseSize: 20.0,
-  viscosity: 0.98,
-  waveHeight: 0.3,
+  mouseSize: 80.0,
+  viscosity: 0.999,
+  waveHeight: 0.15,
+  sunOneInt: 3.6,
+  sunTwoInt: 2.5,
+  colorOne: "#edbd0c",
+  colorTwo: "#7800ff",
+  colorTip: "#fc2348",
+  colorTop: "#ff0000",
   bloomStrength: 3.0,
   bloomRadius: 0.1,
   bloomThreshold: 0.0
 }
 
 // Texture width for simulation
+// note that if you use values other than power of 2, you'd notice seams on your final rendered cube sea
 const WIDTH = 512
 const HEIGHT = 256
 // Water size in system units
-const BOUNDS_W = window.innerWidth
-const BOUNDS_H = window.innerWidth / 2
-
+const BOUNDS_W = 1000
+const BOUNDS_H = 1000 / 2
+// this controls the fps of the gpgpu renderer, thus controls the speed of the animated waves
+const FPSInterval = 1/30
 const simplex = new SimplexNoise()
 
 /**************************************************
@@ -62,14 +69,7 @@ let renderer = createRenderer({ antialias: true }, (_renderer) => {
 
 // Create the camera
 // Pass in fov, near, far and camera position respectively
-let camera = new THREE.OrthographicCamera(
-  window.innerWidth / -2, // left
-  window.innerWidth / 2,  // right
-  window.innerHeight / 2, // top
-  window.innerHeight / -2, // bottom
-  -1000, // near plane
-  1000 // far plane
-)
+let camera = createCamera(45, 1, 5000, { x: -310, y: 100, z: 520 }, {x: -210, y: 0, z: 0})
 
 // The RenderPass is already created in 'createComposer'
 // Post-processing with Bloom effect
@@ -80,7 +80,7 @@ let bloomPass = new UnrealBloomPass(
   params.bloomThreshold
 )
 let composer = createComposer(renderer, scene, camera, (comp) => {
-  comp.addPass(bloomPass)
+  // comp.addPass(bloomPass)
 })
 
 /**************************************************
@@ -91,21 +91,20 @@ let composer = createComposer(renderer, scene, camera, (comp) => {
  *************************************************/
 let app = {
   async initScene() {
-    // OrbitControls
-    // this.controls = new OrbitControls(camera, renderer.domElement)
-    // this.controls.enableDamping = true
-
     await updateLoadingProgressBar(0.1)
+
+    // refresh the random values for waves poking every 5 seconds
+    this.randX = this.randY = 0.5
+    setInterval(() => {
+      this.randX = Math.random() * BOUNDS_W
+      this.randY = Math.random() * BOUNDS_H
+    }, 5000)
 
     this.mouseMoved = false
     this.mouseCoords = new THREE.Vector2()
-    this.raycaster = new THREE.Raycaster()
 
     let waterMesh
-    const waterNormal = new THREE.Vector3()
-
-    this.container.style.touchAction = 'none'
-    this.container.addEventListener( 'pointermove', this.onPointerMove.bind(this) )
+    this.delta = 0
 
     document.addEventListener( 'keydown', function ( event ) {
       // W Pressed: Toggle wireframe
@@ -115,13 +114,49 @@ let app = {
       }
     } )
 
-    const sun = new THREE.DirectionalLight( 0xFFFFFF, 5.0 )
-    sun.position.set( 300, 400, 175 )
-    scene.add( sun )
+    this.sun = new THREE.DirectionalLight( 0xFFFFFF, params.sunOneInt )
+    this.sun.position.set( 300, 400, 175 )
+    scene.add( this.sun )
 
-    const materialColor = 0xFFFFFF
+    this.sun2 = new THREE.DirectionalLight( 0xFFFFFF, params.sunTwoInt )
+    this.sun2.position.set( -300, 100, 175 )
+    scene.add( this.sun2 )
 
-    const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )
+    let baseGeometry = new THREE.BoxGeometry(4.0,4.0,4.0,1,1,1)
+
+    let instancedGeometry = new THREE.InstancedBufferGeometry()
+    //we have to copy the meat - geometry into this wrapper
+    Object.keys(baseGeometry.attributes).forEach(attributeName=>{
+      instancedGeometry.attributes[attributeName] = baseGeometry.attributes[attributeName]
+    })
+    //along with the index
+    instancedGeometry.index = baseGeometry.index
+
+    let instanceCount = WIDTH * HEIGHT
+    instancedGeometry.maxInstancedCount = instanceCount
+
+    // 1. Create the values for each instance
+    let aPos = []
+    let aUv = []
+    for (let j = 0; j < HEIGHT; j++) {
+      for (let i = 0; i < WIDTH; i++) {
+        let posX = (i * 4 + 1) - WIDTH * 2
+        let posZ = (j * 4 + 1) - HEIGHT * 2
+        aPos.push(posX, 0, posZ)
+
+        aUv.push(i/WIDTH, j/HEIGHT)
+      }
+    }
+    // 2. Transform the array to float32
+    let aPosFloat32 = new Float32Array(aPos)
+    let aUvFloat32 = new Float32Array(aUv)
+    // 3. Create the instanced Buffer Attribute of size three
+    instancedGeometry.setAttribute("aPos", 
+      new THREE.InstancedBufferAttribute(aPosFloat32, 3, false)
+    )
+    instancedGeometry.setAttribute("aUv", 
+      new THREE.InstancedBufferAttribute(aUvFloat32, 2, false)
+    )
 
     // material: make a THREE.ShaderMaterial clone of THREE.MeshPhongMaterial, with customized vertex shader
     const material = new THREE.ShaderMaterial( {
@@ -129,6 +164,11 @@ let app = {
         THREE.ShaderLib[ 'phong' ].uniforms,
         {
           'heightmap': { value: null },
+          'u_time': { value: 0.0 },
+          'colorOne': { value: hexToRgb(params.colorOne, true) },
+          'colorTwo': { value: hexToRgb(params.colorTwo, true) },
+          'colorTip': { value: hexToRgb(params.colorTip, true) },
+          'colorTop': { value: hexToRgb(params.colorTop, true) },
         }
       ] ),
       vertexShader: WaterVertex,
@@ -137,58 +177,25 @@ let app = {
 
     material.lights = true
 
-    // Material attributes from THREE.MeshPhongMaterial
-    // for the color map to work, we need all 3 lines (define material.color, material.map and material.uniforms[ 'map' ].value)
-    material.color = new THREE.Color( materialColor )
-    material.specular = new THREE.Color( 0x111111 )
-    material.shininess = 50
-
-    // Sets the uniforms with the material values
-    material.uniforms[ 'diffuse' ].value = material.color
-    material.uniforms[ 'specular' ].value = material.specular
-    material.uniforms[ 'shininess' ].value = Math.max( material.shininess, 1e-4 )
-    material.uniforms[ 'opacity' ].value = material.opacity
-
-    // Defines
-    material.defines.WIDTH = WIDTH.toFixed( 1 )
-    material.defines.HEIGHT = HEIGHT.toFixed( 1 )
-    material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
-
     this.waterUniforms = material.uniforms
 
-    waterMesh = new THREE.Mesh( geometry, material )
-    waterMesh.matrixAutoUpdate = false
-    waterMesh.updateMatrix()
-
+    waterMesh = new THREE.Mesh(instancedGeometry, material)
     scene.add( waterMesh )
-
-    // THREE.Mesh just for mouse raycasting
-    const geometryRay = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, 1, 1 )
-    this.meshRay = new THREE.Mesh( geometryRay, new THREE.MeshBasicMaterial( { color: 0xFFFFFF, visible: false } ) )
-    this.meshRay.matrixAutoUpdate = false
-    this.meshRay.updateMatrix()
-    scene.add( this.meshRay )
 
     // Creates the gpu computation class and sets it up
     this.gpuCompute = new GPUComputationRenderer( WIDTH, HEIGHT, renderer )
-
     if ( renderer.capabilities.isWebGL2 === false ) {
       this.gpuCompute.setDataType( THREE.HalfFloatType )
     }
-
     const heightmap0 = this.gpuCompute.createTexture()
-
     this.fillTexture( heightmap0 )
-
     this.heightmapVariable = this.gpuCompute.addVariable( 'heightmap', HeightmapFragment, heightmap0 )
-
     this.gpuCompute.setVariableDependencies( this.heightmapVariable, [ this.heightmapVariable ] )
 
     this.heightmapVariable.material.uniforms[ 'mousePos' ] = { value: new THREE.Vector2( 10000, 10000 ) }
-    this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: 20.0 }
-    this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: 0.98 }
-    this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: 0.3 }
+    this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: params.mouseSize }
+    this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: params.viscosity }
+    this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: params.waveHeight }
     this.heightmapVariable.material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
     this.heightmapVariable.material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
 
@@ -210,6 +217,28 @@ let app = {
     })
     gui.add(params, "waveHeight", 0.1, 2.0, 0.05 ).onChange((newVal) => {
       this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ].value = newVal
+    })
+    gui.add(params, "sunOneInt", 0.1, 10.0, 0.05 ).onChange((newVal) => {
+      this.sun.intensity = newVal
+    })
+    gui.add(params, "sunTwoInt", 0.1, 10.0, 0.05 ).onChange((newVal) => {
+      this.sun2.intensity = newVal
+    })
+    gui.addColor(params, 'colorOne').name('color 1').onChange((val) => {
+      let clr = new THREE.Color(val)
+      this.waterUniforms[ 'colorOne' ].value = hexToRgb(clr.getHexString(), true)
+    })
+    gui.addColor(params, 'colorTwo').name('color 2').onChange((val) => {
+      let clr = new THREE.Color(val)
+      this.waterUniforms[ 'colorTwo' ].value = hexToRgb(clr.getHexString(), true)
+    })
+    gui.addColor(params, 'colorTip').name('color tip').onChange((val) => {
+      let clr = new THREE.Color(val)
+      this.waterUniforms[ 'colorTip' ].value = hexToRgb(clr.getHexString(), true)
+    })
+    gui.addColor(params, 'colorTop').name('color top').onChange((val) => {
+      let clr = new THREE.Color(val)
+      this.waterUniforms[ 'colorTop' ].value = hexToRgb(clr.getHexString(), true)
     })
     const buttonSmooth = {
       smoothWater: this.smoothWater.bind(this)
@@ -236,35 +265,34 @@ let app = {
     await updateLoadingProgressBar(1.0, 100)
   },
   fillTexture( texture ) {
-    const waterMaxHeight = 2;
+    const waterMaxHeight = 2
 
     function noise( x, y ) {
-      let multR = waterMaxHeight;
-      let mult = 0.025;
-      let r = 0;
-      for ( let i = 0; i < 15; i ++ ) {
-        r += multR * simplex.noise( x * mult, y * mult );
-        multR *= 0.53 + 0.025 * i;
-        mult *= 1.25;
+      let multR = waterMaxHeight
+      let mult = 0.025
+      let r = 0
+      for ( let i = 0; i < 2; i ++ ) {
+        r += multR * simplex.noise( x * mult, y * mult )
+        multR *= 0.53 + 0.025 * i
+        mult *= 1.25
       }
-
-      return r;
+      return r
     }
 
-    const pixels = texture.image.data;
+    const pixels = texture.image.data
 
-    let p = 0;
+    let p = 0
     for ( let j = 0; j < HEIGHT; j ++ ) {
       for ( let i = 0; i < WIDTH; i ++ ) {
-        const x = i * 128 / WIDTH;
-        const y = j * 128 / HEIGHT;
+        const x = i * 128 / WIDTH
+        const y = j * 128 / HEIGHT
 
-        pixels[ p + 0 ] = noise( x, y );
-        pixels[ p + 1 ] = 0;
-        pixels[ p + 2 ] = 0;
-        pixels[ p + 3 ] = 1;
+        pixels[ p + 0 ] = noise(x,y)
+        pixels[ p + 1 ] = 0
+        pixels[ p + 2 ] = 0
+        pixels[ p + 3 ] = 1
 
-        p += 4;
+        p += 4
       }
     }
   },
@@ -281,12 +309,8 @@ let app = {
     }
   },
   setMouseCoords( x, y ) {
-    this.mouseCoords.set( ( x / renderer.domElement.clientWidth ) * 2 - 1, ( y / renderer.domElement.clientHeight ) * 2 - 1 )
+    this.mouseCoords.set( x - BOUNDS_W / 2, y - BOUNDS_H / 2 )
     this.mouseMoved = true
-  },
-  onPointerMove( event ) {
-    if ( event.isPrimary === false ) return
-    this.setMouseCoords( event.clientX, event.clientY )
   },
   resize() {
     camera.left = window.innerWidth / -2
@@ -301,31 +325,31 @@ let app = {
     // this.controls.update()
     this.stats1.update()
 
-    // Set uniforms: mouse interaction
-    const hmUniforms = this.heightmapVariable.material.uniforms
-    if ( this.mouseMoved ) {
-
-      this.raycaster.setFromCamera( this.mouseCoords, camera )
-
-      const intersects = this.raycaster.intersectObject( this.meshRay )
-
-      if ( intersects.length > 0 ) {
-        const point = intersects[ 0 ].point
-        hmUniforms[ 'mousePos' ].value.set( point.x, point.y )
-      } else {
-        hmUniforms[ 'mousePos' ].value.set( 10000, 10000 )
-      }
-
+    // simulate mouse poking waves
+    if (this.mouseMoved) {
+      this.heightmapVariable.material.uniforms[ 'mousePos' ].value.set( this.mouseCoords.x, this.mouseCoords.y )
       this.mouseMoved = false
     } else {
-      hmUniforms[ 'mousePos' ].value.set( 10000, 10000 )
+      this.heightmapVariable.material.uniforms[ 'mousePos' ].value.set( 10000, 10000 )
     }
 
-    // Do the gpu computation
-    this.gpuCompute.compute()
+    // this controls the fps of the gpgpu renderer, thus controls the speed of the animated waves and be consistent across devices of various fps
+    this.delta += interval
+    if (this.delta > FPSInterval) {
+      // Do the gpu computation
+      this.gpuCompute.compute()
+      this.delta = this.delta % FPSInterval
+    }
+
+    if (elapsed % 5 <= 0.5) {
+      this.setMouseCoords(
+        this.randX,
+        this.randY)
+    }
 
     // Get compute output in custom uniform
     this.waterUniforms[ 'heightmap' ].value = this.gpuCompute.getCurrentRenderTarget( this.heightmapVariable ).texture
+    this.waterUniforms[ 'u_time' ].value = elapsed
   }
 }
 

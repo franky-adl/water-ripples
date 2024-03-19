@@ -77,10 +77,6 @@ let camera = createCamera(50, 1, 3000, { x: 0, y: 0, z: 500 })
  *************************************************/
 let app = {
   async initScene() {
-    // OrbitControls
-    this.controls = new OrbitControls(camera, renderer.domElement)
-    this.controls.enableDamping = true
-
     let PoolTexture = await loadTexture(Mosaic)
     // assigning image textures with SRGBColorSpace is essential in getting the rendered colors correct
     PoolTexture.colorSpace = THREE.SRGBColorSpace
@@ -370,15 +366,15 @@ let app = {
     await updateLoadingProgressBar(1.0, 100)
   },
   fillTexture( texture ) {
-    const waterMaxHeight = 10;
+    const waterMaxHeight = 0.8;
 
     function noise( x, y ) {
       let multR = waterMaxHeight;
       let mult = 0.025;
       let r = 0;
-      for ( let i = 0; i < 15; i ++ ) {
+      for ( let i = 0; i < 10; i ++ ) {
         r += multR * simplex.noise( x * mult, y * mult );
-        multR *= 0.53 + 0.025 * i;
+        multR *= 0.3 + 0.025 * i;
         mult *= 1.25;
       }
 
@@ -394,7 +390,7 @@ let app = {
         const y = j * 128 / HEIGHT;
 
         pixels[ p + 0 ] = noise( x, y );
-        pixels[ p + 1 ] = pixels[ p + 0 ];
+        pixels[ p + 1 ] = 0;
         pixels[ p + 2 ] = 0;
         pixels[ p + 3 ] = 1;
 
@@ -433,7 +429,6 @@ let app = {
   // @param {number} interval - time elapsed between 2 frames
   // @param {number} elapsed - total time elapsed since app start
   updateScene(interval, elapsed) {
-    // this.controls.update()
     this.stats1.update()
 
     // add simulated random mouse events to keep the waves moving
