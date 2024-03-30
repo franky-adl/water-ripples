@@ -1,4 +1,4 @@
-#include <common>
+#define PI 3.1415926538
 
 uniform vec2 mousePos;
 uniform float mouseSize;
@@ -32,7 +32,7 @@ void main()	{
     float newHeight = ( ( north.x + south.x + east.x + west.x ) * 0.5 - heightmapValue.y ) * viscosityConstant;
 
     // Mouse influence
-    float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * vec2(BOUNDS_W, BOUNDS_H) - vec2( mousePos.x, - mousePos.y ) ) * PI / mouseSize, 0.0, PI );
+    float mousePhase = clamp( length( ( uv - vec2( 0.5 ) ) * vec2(GEOM_WIDTH, GEOM_HEIGHT) - vec2( mousePos.x, - mousePos.y ) ) * PI / mouseSize, 0.0, PI );
     newHeight += ( cos( mousePhase ) + 1.0 ) * waveheightMultiplier;
 
     heightmapValue.y = heightmapValue.x;

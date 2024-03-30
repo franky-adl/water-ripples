@@ -2,13 +2,11 @@
 import * as THREE from "three"
 import * as dat from 'dat.gui'
 import Stats from "three/examples/jsm/libs/stats.module"
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { GPUComputationRenderer } from "three/examples/jsm/misc/GPUComputationRenderer"
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise"
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass"
 
 // Core boilerplate code deps
-import { createCamera, createComposer, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
+import { createCamera, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
 
 // Other deps
 import {hexToRgb} from "./common-utils"
@@ -43,11 +41,11 @@ const params = {
 
 // Texture width for simulation
 // note that if you use values other than power of 2, you'd notice seams on your final rendered cube sea
-const WIDTH = 512
-const HEIGHT = 256
+const FBO_WIDTH = 512
+const FBO_HEIGHT = 256
 // Water size in system units
-const BOUNDS_W = 1000
-const BOUNDS_H = 1000 / 2
+const GEOM_WIDTH = 1000
+const GEOM_HEIGHT = 1000 / 2
 // this controls the fps of the gpgpu renderer, thus controls the speed of the animated waves
 const FPSInterval = 1/30
 const simplex = new SimplexNoise()
@@ -71,18 +69,6 @@ let renderer = createRenderer({ antialias: true }, (_renderer) => {
 // Pass in fov, near, far and camera position respectively
 let camera = createCamera(45, 1, 5000, { x: -310, y: 100, z: 520 }, {x: -210, y: 0, z: 0})
 
-// The RenderPass is already created in 'createComposer'
-// Post-processing with Bloom effect
-let bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  params.bloomStrength,
-  params.bloomRadius,
-  params.bloomThreshold
-)
-let composer = createComposer(renderer, scene, camera, (comp) => {
-  // comp.addPass(bloomPass)
-})
-
 /**************************************************
  * 2. Build your scene in this threejs app
  * This app object needs to consist of at least the async initScene() function (it is async so the animate function can wait for initScene() to finish before being called)
@@ -96,23 +82,14 @@ let app = {
     // refresh the random values for waves poking every 5 seconds
     this.randX = this.randY = 0.5
     setInterval(() => {
-      this.randX = Math.random() * BOUNDS_W
-      this.randY = Math.random() * BOUNDS_H
+      this.randX = Math.random() * GEOM_WIDTH
+      this.randY = Math.random() * GEOM_HEIGHT
     }, 5000)
 
     this.mouseMoved = false
     this.mouseCoords = new THREE.Vector2()
 
-    let waterMesh
     this.delta = 0
-
-    document.addEventListener( 'keydown', function ( event ) {
-      // W Pressed: Toggle wireframe
-      if ( event.keyCode === 87 ) {
-        waterMesh.material.wireframe = ! waterMesh.material.wireframe
-        waterMesh.material.needsUpdate = true
-      }
-    } )
 
     this.sun = new THREE.DirectionalLight( 0xFFFFFF, params.sunOneInt )
     this.sun.position.set( 300, 400, 175 )
@@ -132,19 +109,19 @@ let app = {
     //along with the index
     instancedGeometry.index = baseGeometry.index
 
-    let instanceCount = WIDTH * HEIGHT
+    let instanceCount = FBO_WIDTH * FBO_HEIGHT
     instancedGeometry.maxInstancedCount = instanceCount
 
     // 1. Create the values for each instance
     let aPos = []
     let aUv = []
-    for (let j = 0; j < HEIGHT; j++) {
-      for (let i = 0; i < WIDTH; i++) {
-        let posX = (i * 4 + 1) - WIDTH * 2
-        let posZ = (j * 4 + 1) - HEIGHT * 2
+    for (let j = 0; j < FBO_HEIGHT; j++) {
+      for (let i = 0; i < FBO_WIDTH; i++) {
+        let posX = (i * 4 + 1) - FBO_WIDTH * 2
+        let posZ = (j * 4 + 1) - FBO_HEIGHT * 2
         aPos.push(posX, 0, posZ)
 
-        aUv.push(i/WIDTH, j/HEIGHT)
+        aUv.push(i/FBO_WIDTH, j/FBO_HEIGHT)
       }
     }
     // 2. Transform the array to float32
@@ -179,11 +156,11 @@ let app = {
 
     this.waterUniforms = material.uniforms
 
-    waterMesh = new THREE.Mesh(instancedGeometry, material)
-    scene.add( waterMesh )
+    this.waterMesh = new THREE.Mesh(instancedGeometry, material)
+    scene.add( this.waterMesh )
 
     // Creates the gpu computation class and sets it up
-    this.gpuCompute = new GPUComputationRenderer( WIDTH, HEIGHT, renderer )
+    this.gpuCompute = new GPUComputationRenderer( FBO_WIDTH, FBO_HEIGHT, renderer )
     if ( renderer.capabilities.isWebGL2 === false ) {
       this.gpuCompute.setDataType( THREE.HalfFloatType )
     }
@@ -196,8 +173,8 @@ let app = {
     this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: params.mouseSize }
     this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: params.viscosity }
     this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: params.waveHeight }
-    this.heightmapVariable.material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    this.heightmapVariable.material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_WIDTH = GEOM_WIDTH.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_HEIGHT = GEOM_HEIGHT.toFixed( 1 )
 
     const error = this.gpuCompute.init()
     if ( error !== null ) {
@@ -282,10 +259,10 @@ let app = {
     const pixels = texture.image.data
 
     let p = 0
-    for ( let j = 0; j < HEIGHT; j ++ ) {
-      for ( let i = 0; i < WIDTH; i ++ ) {
-        const x = i * 128 / WIDTH
-        const y = j * 128 / HEIGHT
+    for ( let j = 0; j < FBO_HEIGHT; j ++ ) {
+      for ( let i = 0; i < FBO_WIDTH; i ++ ) {
+        const x = i * 128 / FBO_WIDTH
+        const y = j * 128 / FBO_HEIGHT
 
         pixels[ p + 0 ] = noise(x,y)
         pixels[ p + 1 ] = 0
@@ -309,7 +286,7 @@ let app = {
     }
   },
   setMouseCoords( x, y ) {
-    this.mouseCoords.set( x - BOUNDS_W / 2, y - BOUNDS_H / 2 )
+    this.mouseCoords.set( x - GEOM_WIDTH / 2, y - GEOM_HEIGHT / 2 )
     this.mouseMoved = true
   },
   resize() {
@@ -361,4 +338,4 @@ let app = {
  * ps. if you don't use custom shaders, pass undefined to the 'uniforms'(2nd-last) param
  * ps. if you don't use post-processing, pass undefined to the 'composer'(last) param
  *************************************************/
-runApp(app, scene, renderer, camera, true, undefined, composer)
+runApp(app, scene, renderer, camera, true)
