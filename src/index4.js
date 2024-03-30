@@ -2,7 +2,6 @@
 import * as THREE from "three"
 import * as dat from 'dat.gui'
 import Stats from "three/examples/jsm/libs/stats.module"
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { GPUComputationRenderer } from "three/examples/jsm/misc/GPUComputationRenderer"
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise"
 
@@ -31,10 +30,7 @@ const params = {
   // general scene params
   mouseSize: 20.0,
   viscosity: 0.999,
-  waveHeight: 0.2,
-  bloomStrength: 3.0,
-  bloomRadius: 0.1,
-  bloomThreshold: 0.0
+  waveHeight: 0.5,
 }
 
 const uniforms = {
@@ -42,11 +38,11 @@ const uniforms = {
 }
 
 // Texture width for simulation
-const WIDTH = 1024
-const HEIGHT = 512
+const FBO_WIDTH = 512
+const FBO_HEIGHT = 256
 // Water size in system units
-const BOUNDS_W = 1000
-const BOUNDS_H = 1000 / 2
+const GEOM_WIDTH = 1000
+const GEOM_HEIGHT = 1000 / 2
 
 const simplex = new SimplexNoise()
 
@@ -98,18 +94,8 @@ let app = {
     this.mouseCoords = new THREE.Vector2()
     this.raycaster = new THREE.Raycaster()
 
-    let waterMesh
-
     this.container.style.touchAction = 'none'
     this.container.addEventListener( 'pointermove', this.onPointerMove.bind(this) )
-
-    document.addEventListener( 'keydown', function ( event ) {
-      // W Pressed: Toggle wireframe
-      if ( event.keyCode === 87 ) {
-        waterMesh.material.wireframe = ! waterMesh.material.wireframe
-        waterMesh.material.needsUpdate = true
-      }
-    } )
 
     // set up lighting
     const sun = new THREE.DirectionalLight( 0xFFFFFF, 2.5 )
@@ -127,7 +113,7 @@ let app = {
     backdrop.position.set(0, 300, -260)
     scene.add(backdrop)
 
-    const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )
+    const geometry = new THREE.PlaneGeometry( GEOM_WIDTH, GEOM_HEIGHT, FBO_WIDTH, FBO_HEIGHT )
 
     // create a new camera from which to project
     let cam2 = new THREE.OrthographicCamera(-600, 600, 500, -500, 1, 2000)
@@ -278,10 +264,10 @@ let app = {
       `);
       shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `
         // Compute normal from heightmap
-        vec2 cellSize = vec2( 1.0 / (WIDTH), 1.0 / HEIGHT );
+        vec2 cellSize = vec2( 1.0 / (FBO_WIDTH), 1.0 / FBO_HEIGHT );
         vec3 objectNormal = vec3(
-            ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * WIDTH / BOUNDS_W,
-            ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * HEIGHT / BOUNDS_H,
+            ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * FBO_WIDTH / GEOM_WIDTH,
+            ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * FBO_HEIGHT / GEOM_HEIGHT,
             1.0 );
       `);
       shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
@@ -291,28 +277,21 @@ let app = {
     }
     this.surfaceMat.onBeforeCompile = obc_surfaceMat
     // Defines
-    this.surfaceMat.defines.WIDTH = WIDTH.toFixed( 1 )
-    this.surfaceMat.defines.HEIGHT = HEIGHT.toFixed( 1 )
-    this.surfaceMat.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    this.surfaceMat.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
+    this.surfaceMat.defines.FBO_WIDTH = FBO_WIDTH.toFixed( 1 )
+    this.surfaceMat.defines.FBO_HEIGHT = FBO_HEIGHT.toFixed( 1 )
+    this.surfaceMat.defines.GEOM_WIDTH = GEOM_WIDTH.toFixed( 1 )
+    this.surfaceMat.defines.GEOM_HEIGHT = GEOM_HEIGHT.toFixed( 1 )
 
-    waterMesh = new THREE.Mesh( geometry, this.surfaceMat )
-    waterMesh.rotation.x = -Math.PI/2
-    waterMesh.position.y = 230
-    waterMesh.matrixAutoUpdate = false
-    waterMesh.updateMatrix()
+    this.waterMesh = new THREE.Mesh( geometry, this.surfaceMat )
+    this.waterMesh.rotation.x = -Math.PI/2
+    this.waterMesh.position.y = 230
+    this.waterMesh.matrixAutoUpdate = false
+    this.waterMesh.updateMatrix()
 
-    scene.add( waterMesh )
-
-    // THREE.Mesh just for mouse raycasting
-    const geometryRay = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, 1, 1 )
-    this.meshRay = new THREE.Mesh( geometryRay, new THREE.MeshBasicMaterial( { color: 0xFFFFFF, visible: false } ) )
-    this.meshRay.matrixAutoUpdate = false
-    this.meshRay.updateMatrix()
-    scene.add( this.meshRay )
+    scene.add( this.waterMesh )
 
     // Creates the gpu computation class and sets it up
-    this.gpuCompute = new GPUComputationRenderer( WIDTH, HEIGHT, renderer )
+    this.gpuCompute = new GPUComputationRenderer( FBO_WIDTH, FBO_HEIGHT, renderer )
 
     if ( renderer.capabilities.isWebGL2 === false ) {
       this.gpuCompute.setDataType( THREE.HalfFloatType )
@@ -329,8 +308,8 @@ let app = {
     this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: params.mouseSize }
     this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: params.viscosity }
     this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: params.waveHeight }
-    this.heightmapVariable.material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    this.heightmapVariable.material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_WIDTH = GEOM_WIDTH.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_HEIGHT = GEOM_HEIGHT.toFixed( 1 )
 
     const error = this.gpuCompute.init()
     if ( error !== null ) {
@@ -384,10 +363,10 @@ let app = {
     const pixels = texture.image.data;
 
     let p = 0;
-    for ( let j = 0; j < HEIGHT; j ++ ) {
-      for ( let i = 0; i < WIDTH; i ++ ) {
-        const x = i * 128 / WIDTH;
-        const y = j * 128 / HEIGHT;
+    for ( let j = 0; j < FBO_HEIGHT; j ++ ) {
+      for ( let i = 0; i < FBO_WIDTH; i ++ ) {
+        const x = i * 128 / FBO_WIDTH;
+        const y = j * 128 / FBO_HEIGHT;
 
         pixels[ p + 0 ] = noise( x, y );
         pixels[ p + 1 ] = 0;
@@ -442,7 +421,7 @@ let app = {
 
       this.raycaster.setFromCamera( this.mouseCoords, camera )
 
-      const intersects = this.raycaster.intersectObject( this.meshRay )
+      const intersects = this.raycaster.intersectObject( this.waterMesh )
 
       if ( intersects.length > 0 ) {
         const point = intersects[ 0 ].point
@@ -473,4 +452,4 @@ let app = {
  * ps. if you don't use custom shaders, pass undefined to the 'uniforms'(2nd-last) param
  * ps. if you don't use post-processing, pass undefined to the 'composer'(last) param
  *************************************************/
-runApp(app, scene, renderer, camera, true, uniforms, undefined)
+runApp(app, scene, renderer, camera, true, uniforms)

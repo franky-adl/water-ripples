@@ -24,7 +24,7 @@ varying float heightValue;
 
 void main() {
 
-    vec2 cellSize = vec2( 1.0 / (WIDTH), 1.0 / HEIGHT );
+    vec2 cellSize = vec2( 1.0 / (FBO_WIDTH), 1.0 / FBO_HEIGHT );
 
     #include <uv_vertex>
     #include <color_vertex>
@@ -32,8 +32,8 @@ void main() {
     // # include <beginnormal_vertex>
     // Compute normal from heightmap
     vec3 objectNormal = vec3(
-        ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * WIDTH / BOUNDS_W,
-        ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * HEIGHT / BOUNDS_H,
+        ( texture2D( heightmap, uv + vec2( - cellSize.x, 0 ) ).x - texture2D( heightmap, uv + vec2( cellSize.x, 0 ) ).x ) * FBO_WIDTH / GEOM_WIDTH,
+        ( texture2D( heightmap, uv + vec2( 0, - cellSize.y ) ).x - texture2D( heightmap, uv + vec2( 0, cellSize.y ) ).x ) * FBO_HEIGHT / GEOM_HEIGHT,
         1.0 );
     //<beginnormal_vertex>
 

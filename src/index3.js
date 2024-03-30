@@ -2,21 +2,18 @@
 import * as THREE from "three"
 import * as dat from 'dat.gui'
 import Stats from "three/examples/jsm/libs/stats.module"
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"
 import { GPUComputationRenderer } from "three/examples/jsm/misc/GPUComputationRenderer"
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise"
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass"
 
 // Core boilerplate code deps
-import { createCamera, createComposer, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
+import { createComposer, createRenderer, runApp, updateLoadingProgressBar } from "./core-utils"
 
 // Other deps
-import { loadTexture } from "./common-utils"
 import WaterVertex from "./shaders/waterVertex.glsl"
 import WaterFragment from "./shaders/waterFragment3.glsl"
 import HeightmapFragment from "./shaders/heightmapFragment.glsl"
 import SmoothFragment from "./shaders/smoothFragment.glsl"
-import Mountains from "./assets/mountains.jpg"
 
 global.THREE = THREE
 // previously this feature is .legacyMode = false, see https://www.donmccurdy.com/2020/06/17/color-management-in-threejs/
@@ -37,11 +34,11 @@ const params = {
 }
 
 // Texture width for simulation
-const WIDTH = 512
-const HEIGHT = 256
+const FBO_WIDTH = 512
+const FBO_HEIGHT = 256
 // Water size in system units
-const BOUNDS_W = window.innerWidth
-const BOUNDS_H = window.innerWidth / 2
+const GEOM_WIDTH = window.innerWidth
+const GEOM_HEIGHT = window.innerWidth / 2
 
 const simplex = new SimplexNoise()
 
@@ -91,29 +88,14 @@ let composer = createComposer(renderer, scene, camera, (comp) => {
  *************************************************/
 let app = {
   async initScene() {
-    // OrbitControls
-    // this.controls = new OrbitControls(camera, renderer.domElement)
-    // this.controls.enableDamping = true
-
     await updateLoadingProgressBar(0.1)
 
     this.mouseMoved = false
     this.mouseCoords = new THREE.Vector2()
     this.raycaster = new THREE.Raycaster()
 
-    let waterMesh
-    const waterNormal = new THREE.Vector3()
-
     this.container.style.touchAction = 'none'
     this.container.addEventListener( 'pointermove', this.onPointerMove.bind(this) )
-
-    document.addEventListener( 'keydown', function ( event ) {
-      // W Pressed: Toggle wireframe
-      if ( event.keyCode === 87 ) {
-        waterMesh.material.wireframe = ! waterMesh.material.wireframe
-        waterMesh.material.needsUpdate = true
-      }
-    } )
 
     const sun = new THREE.DirectionalLight( 0xFFFFFF, 5.0 )
     sun.position.set( 300, 400, 175 )
@@ -121,7 +103,7 @@ let app = {
 
     const materialColor = 0xFFFFFF
 
-    const geometry = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, WIDTH, HEIGHT )
+    const geometry = new THREE.PlaneGeometry( GEOM_WIDTH, GEOM_HEIGHT, FBO_WIDTH, FBO_HEIGHT )
 
     // material: make a THREE.ShaderMaterial clone of THREE.MeshPhongMaterial, with customized vertex shader
     const material = new THREE.ShaderMaterial( {
@@ -150,28 +132,21 @@ let app = {
     material.uniforms[ 'opacity' ].value = material.opacity
 
     // Defines
-    material.defines.WIDTH = WIDTH.toFixed( 1 )
-    material.defines.HEIGHT = HEIGHT.toFixed( 1 )
-    material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
+    material.defines.FBO_WIDTH = FBO_WIDTH.toFixed( 1 )
+    material.defines.FBO_HEIGHT = FBO_HEIGHT.toFixed( 1 )
+    material.defines.GEOM_WIDTH = GEOM_WIDTH.toFixed( 1 )
+    material.defines.GEOM_HEIGHT = GEOM_HEIGHT.toFixed( 1 )
 
     this.waterUniforms = material.uniforms
 
-    waterMesh = new THREE.Mesh( geometry, material )
-    waterMesh.matrixAutoUpdate = false
-    waterMesh.updateMatrix()
+    this.waterMesh = new THREE.Mesh( geometry, material )
+    this.waterMesh.matrixAutoUpdate = false
+    this.waterMesh.updateMatrix()
 
-    scene.add( waterMesh )
-
-    // THREE.Mesh just for mouse raycasting
-    const geometryRay = new THREE.PlaneGeometry( BOUNDS_W, BOUNDS_H, 1, 1 )
-    this.meshRay = new THREE.Mesh( geometryRay, new THREE.MeshBasicMaterial( { color: 0xFFFFFF, visible: false } ) )
-    this.meshRay.matrixAutoUpdate = false
-    this.meshRay.updateMatrix()
-    scene.add( this.meshRay )
+    scene.add( this.waterMesh )
 
     // Creates the gpu computation class and sets it up
-    this.gpuCompute = new GPUComputationRenderer( WIDTH, HEIGHT, renderer )
+    this.gpuCompute = new GPUComputationRenderer( FBO_WIDTH, FBO_HEIGHT, renderer )
 
     if ( renderer.capabilities.isWebGL2 === false ) {
       this.gpuCompute.setDataType( THREE.HalfFloatType )
@@ -189,8 +164,8 @@ let app = {
     this.heightmapVariable.material.uniforms[ 'mouseSize' ] = { value: 20.0 }
     this.heightmapVariable.material.uniforms[ 'viscosityConstant' ] = { value: 0.98 }
     this.heightmapVariable.material.uniforms[ 'waveheightMultiplier' ] = { value: 0.3 }
-    this.heightmapVariable.material.defines.BOUNDS_W = BOUNDS_W.toFixed( 1 )
-    this.heightmapVariable.material.defines.BOUNDS_H = BOUNDS_H.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_WIDTH = GEOM_WIDTH.toFixed( 1 )
+    this.heightmapVariable.material.defines.GEOM_HEIGHT = GEOM_HEIGHT.toFixed( 1 )
 
     const error = this.gpuCompute.init()
     if ( error !== null ) {
@@ -254,10 +229,10 @@ let app = {
     const pixels = texture.image.data;
 
     let p = 0;
-    for ( let j = 0; j < HEIGHT; j ++ ) {
-      for ( let i = 0; i < WIDTH; i ++ ) {
-        const x = i * 128 / WIDTH;
-        const y = j * 128 / HEIGHT;
+    for ( let j = 0; j < FBO_HEIGHT; j ++ ) {
+      for ( let i = 0; i < FBO_WIDTH; i ++ ) {
+        const x = i * 128 / FBO_WIDTH;
+        const y = j * 128 / FBO_HEIGHT;
 
         pixels[ p + 0 ] = noise( x, y );
         pixels[ p + 1 ] = 0;
@@ -307,7 +282,7 @@ let app = {
 
       this.raycaster.setFromCamera( this.mouseCoords, camera )
 
-      const intersects = this.raycaster.intersectObject( this.meshRay )
+      const intersects = this.raycaster.intersectObject( this.waterMesh )
 
       if ( intersects.length > 0 ) {
         const point = intersects[ 0 ].point
