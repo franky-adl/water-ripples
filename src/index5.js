@@ -221,16 +221,6 @@ let app = {
       smoothWater: this.smoothWater.bind(this)
     }
     gui.add( buttonSmooth, 'smoothWater' )
-    let bloomFolder = gui.addFolder("Bloom")
-    bloomFolder.add(params, "bloomStrength", 0, 5, 0.05).onChange((val) => {
-      bloomPass.strength = Number(val)
-    })
-    bloomFolder.add(params, "bloomRadius", 0, 2, 0.05).onChange((val) => {
-      bloomPass.radius = Number(val)
-    })
-    bloomFolder.add(params, "bloomThreshold", 0, 1, 0.05).onChange((val) => {
-      bloomPass.threshold = Number(val)
-    })
 
     // Stats - show fps
     this.stats1 = new Stats()
